@@ -9,6 +9,8 @@
 #include <condition_variable>
 #include <thread>
 
+namespace cudaCallback { // begin of namespace cudaCallback =========================
+
 class Scheduler;
 
 struct cudaCallbackData {
@@ -69,7 +71,7 @@ class Scheduler {
 };
 
 // cuda callback
-void CUDART_CB _cuda_callback(cudaStream_t st, cudaError_t stat, void* void_args) {
+void CUDART_CB _cuda_callback(cudaStream_t stream, cudaError_t stat, void* void_args) {
 
   // unpack
   auto* cbd = (cudaCallbackData*) void_args;
@@ -152,10 +154,7 @@ void Scheduler::_enqueue(std::coroutine_handle<> task) {
 void Scheduler::_process(std::coroutine_handle<> task) {
   task.resume();
 
-  if(!task.done()) {
-    _enqueue(task);
-  }
-  else {
+  if(task.done()) {
     if(_finished.fetch_add(1) + 1 == _tasks.size()) {
       {
         std::unique_lock<std::mutex> lock(_mtx);
@@ -165,3 +164,5 @@ void Scheduler::_process(std::coroutine_handle<> task) {
     }
   }
 }
+
+} // end of namespace cudaCallback =========================

@@ -1,7 +1,7 @@
 #include <iostream>
 #include "scheduler.hpp"
 
-using namespace cudaCallback;
+using namespace cudaWoCoro;
 
 template <typename T>
 __global__
@@ -9,7 +9,8 @@ void gpu_count(T* count) {
   ++(*count);
 }
 
-Task TaskA(Scheduler& sch) {
+void TaskA() {
+
   std::cout << "Start TaskA\n";
   int* counter;
   cudaStream_t stream;
@@ -18,14 +19,14 @@ Task TaskA(Scheduler& sch) {
   cudaStreamCreate(&stream);
   gpu_count<<<8, 256, 0, stream>>>(counter);
  
-  co_await sch.suspend(stream);
+  cudaStreamSynchronize(stream);
 
   std::cout << "TaskA is finished\n";
   cudaFreeAsync(counter, stream);
   cudaStreamDestroy(stream);
 }
 
-Task TaskB(Scheduler& sch) {
+void TaskB() {
 
   std::cout << "Start TaskB\n";
   int* counter;
@@ -35,7 +36,7 @@ Task TaskB(Scheduler& sch) {
   cudaStreamCreate(&stream);
   gpu_count<<<8, 256, 0, stream>>>(counter);
  
-  co_await sch.suspend(stream);
+  cudaStreamSynchronize(stream);
 
   cudaFreeAsync(counter, stream);
   cudaStreamDestroy(stream);
@@ -46,10 +47,10 @@ Task TaskB(Scheduler& sch) {
 
 int main() {
 
-  Scheduler sch;
+  Scheduler sch(1);
 
-  sch.emplace(TaskA(sch).get_handle());
-  sch.emplace(TaskB(sch).get_handle());
+  sch.emplace(TaskA);
+  sch.emplace(TaskB);
 
   std::cout << "Start scheduling...\n";
 

@@ -1,6 +1,8 @@
 #include <iostream>
 #include "scheduler.hpp"
 
+using namespace cudaPoll;
+
 template <typename T>
 __global__
 void gpu_count(T* count) {

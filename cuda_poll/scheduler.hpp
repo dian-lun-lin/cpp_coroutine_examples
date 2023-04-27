@@ -1,3 +1,4 @@
+#pragma once
 #include <coroutine>
 #include <list>
 #include <queue>
@@ -6,6 +7,8 @@
 #include <mutex>
 #include <condition_variable>
 #include <thread>
+
+namespace cudaPoll { // begin of namespace cudaPoll =========================
 
 struct Task {
 
@@ -123,3 +126,5 @@ void Scheduler::_process(std::coroutine_handle<> task) {
     }
   }
 }
+
+} // end of namespace cudaPoll =========================

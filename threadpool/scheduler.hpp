@@ -1,3 +1,4 @@
+#pragma once
 #include <coroutine>
 #include <list>
 #include <queue>
@@ -37,20 +38,19 @@ class Scheduler {
     void schedule();
     void wait();
 
-
   private:
+
+    void _enqueue(std::coroutine_handle<> task);
+    void _process(std::coroutine_handle<> task);
 
     std::vector<std::coroutine_handle<>> _tasks;
     std::queue<std::coroutine_handle<>> _pending_tasks;
-
     std::vector<std::thread> _workers;
+
     std::mutex _mtx;
     std::condition_variable _cv;
     bool _stop{false};
     std::atomic<size_t> _finished{0};
-
-    void _enqueue(std::coroutine_handle<> task);
-    void _process(std::coroutine_handle<> task);
 };
 
 Scheduler::Scheduler(size_t num_threads) {
@@ -99,14 +99,6 @@ void Scheduler::wait() {
   } 
 }
 
-void Scheduler::_enqueue(std::coroutine_handle<> task) {
-  {
-    std::unique_lock<std::mutex> lock(_mtx);
-    _pending_tasks.push(task);
-  }
-  _cv.notify_one();
-}
-
 void Scheduler::_process(std::coroutine_handle<> task) {
   task.resume();
 
@@ -122,4 +114,12 @@ void Scheduler::_process(std::coroutine_handle<> task) {
       _cv.notify_all();
     }
   }
+}
+
+void Scheduler::_enqueue(std::coroutine_handle<> task) {
+  {
+    std::unique_lock<std::mutex> lock(_mtx);
+    _pending_tasks.push(task);
+  }
+  _cv.notify_one();
 }
