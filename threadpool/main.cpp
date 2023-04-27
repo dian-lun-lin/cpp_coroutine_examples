@@ -28,6 +28,8 @@ int main() {
   std::cout << "Start scheduling...\n";
 
   sch.schedule();
+  sch.wait();
+
 }
 
 

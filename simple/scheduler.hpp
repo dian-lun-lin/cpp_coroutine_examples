@@ -1,42 +1,48 @@
 #include <coroutine>
-#include <list>
+#include <queue>
 
 struct Task {
 
   struct promise_type {
-    std::suspend_never initial_suspend() noexcept { return {}; }
-    std::suspend_never final_suspend() noexcept { return {}; }
+    std::suspend_always initial_suspend() noexcept { return {}; }
+    std::suspend_always final_suspend() noexcept { return {}; }
 
-    Task get_return_object() { return Task{}; }
+    Task get_return_object() { return std::coroutine_handle<promise_type>::from_promise(*this); }
     void unhandled_exception() {}
   };
+
+  Task(std::coroutine_handle<promise_type> handle): handle{handle} {}
+
+  auto get_handle() { return handle; }
+
+  std::coroutine_handle<promise_type> handle;
 };
 
 
 class Scheduler {
 
-  std::list<std::coroutine_handle<>> _tasks;
-
+  std::queue<std::coroutine_handle<>> _tasks;
 
   public: 
-    bool schedule() {
-      auto task = _tasks.front();
-      _tasks.pop_front();
-      if(!task.done()) { task.resume(); }
 
-      return !_tasks.empty();
+    void emplace(std::coroutine_handle<> task) {
+      _tasks.push(task);
+    }
+
+    void schedule() {
+      while(!_tasks.empty()) {
+        auto task = _tasks.front();
+        _tasks.pop();
+        task.resume();
+
+        if(!task.done()) { 
+          _tasks.push(task);
+        }
+      }
     }
 
     auto suspend() {
-      struct Awaiter: std::suspend_always {
-        Scheduler& scheduler;
-        Awaiter(Scheduler& sched): scheduler{sched} {}
-        void await_suspend(std::coroutine_handle<> coro) {
-          scheduler._tasks.push_back(coro);
-        }
-      };
-
-      return Awaiter{*this};
+      return std::suspend_always{};
     }
 };
 
