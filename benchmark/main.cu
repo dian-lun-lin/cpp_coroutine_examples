@@ -21,43 +21,61 @@ __global__ void cuda_loop(
   } while (cycles_elapsed < loop_cycles);
 }
 
+// CPU loop task
+void cpu_loop(int ms) {
+  auto start = std::chrono::steady_clock::now();
+  int a = 1;
+  int b = a * 10 % 7;
+  while(b != 0)
+  {
+    a = b * 10;
+    b = a % 7;
+    if(std::chrono::steady_clock::now() - start > std::chrono::milliseconds(ms)) 
+      break;
+  }
+}
+
+
+// ===================================================
+//
+// Defition of work 
+//
 // ===================================================
 
-// Defition of Task
-
-// ===================================================
-
-cudaPoll::Task gpu_work(
+cudaPoll::Task work(
   cudaPoll::Scheduler& sch, dim3 dim_grid, dim3 dim_block, 
-  size_t BLOCK_SIZE, int ms
+  size_t BLOCK_SIZE,  int cpu_ms, int gpu_ms
 ) {
+  cpu_loop(cpu_ms);
   cudaStream_t stream;
   cudaStreamCreate(&stream);
-  cuda_loop<<<dim_grid, dim_block, 0, stream>>>(ms);
+  cuda_loop<<<dim_grid, dim_block, 0, stream>>>(gpu_ms);
   while(cudaStreamQuery(stream) != cudaSuccess) {
     co_await sch.suspend();
   }
   cudaStreamDestroy(stream);
 }
 
-cudaCallback::Task gpu_work(
+cudaCallback::Task work(
   cudaCallback::Scheduler& sch, dim3 dim_grid, dim3 dim_block, 
-  size_t BLOCK_SIZE, int ms
+  size_t BLOCK_SIZE,  int cpu_ms, int gpu_ms
 ) {
+  cpu_loop(cpu_ms);
   cudaStream_t stream;
   cudaStreamCreate(&stream);
-  cuda_loop<<<dim_grid, dim_block, 0, stream>>>(ms);
+  cuda_loop<<<dim_grid, dim_block, 0, stream>>>(gpu_ms);
   co_await sch.suspend(stream);
   cudaStreamDestroy(stream);
 }
 
-void gpu_work_wo_coro(
+void wo_coro_work(
   dim3 dim_grid, dim3 dim_block, 
-  size_t BLOCK_SIZE, int ms
+  size_t BLOCK_SIZE, int cpu_ms, int gpu_ms
 ) {
+  cpu_loop(cpu_ms);
   cudaStream_t stream;
   cudaStreamCreate(&stream);
-  cuda_loop<<<dim_grid, dim_block, 0, stream>>>(ms);
+  cuda_loop<<<dim_grid, dim_block, 0, stream>>>(gpu_ms);
   cudaStreamSynchronize(stream);
   cudaStreamDestroy(stream);
 }
@@ -71,13 +89,14 @@ void gpu_work_wo_coro(
 
 int main(int argc, char** argv) {
 
-  if(argc != 4) {
-    std::cerr << "usage: ./a.out num_threads num_tasks task_overhead(ms) \n";
+  if(argc != 5) {
+    std::cerr << "usage: ./a.out num_threads num_tasks cpu_time(ms) gpu_time(ms) \n";
   }
 
   int num_threads = std::atoi(argv[1]);
   int num_tasks = std::atoi(argv[2]);
-  int ms = std::atoi(argv[3]);
+  int cpu_ms = std::atoi(argv[3]);
+  int gpu_ms = std::atoi(argv[3]);
   size_t BLOCK_SIZE = 32;
   dim3 dim_grid(1, 1, 1);
   dim3 dim_block(BLOCK_SIZE, BLOCK_SIZE, 1);
@@ -85,7 +104,7 @@ int main(int argc, char** argv) {
   {
     cudaPoll::Scheduler sch{(size_t)num_threads};
     for(size_t i = 0; i < num_tasks; ++i) {
-      sch.emplace(gpu_work(sch, dim_grid, dim_block, BLOCK_SIZE, ms).get_handle());
+      sch.emplace(work(sch, dim_grid, dim_block, BLOCK_SIZE, cpu_ms, gpu_ms).get_handle());
     }
     auto beg_t = std::chrono::steady_clock::now();
     sch.schedule();
@@ -99,7 +118,7 @@ int main(int argc, char** argv) {
   {
     cudaCallback::Scheduler sch{(size_t)num_threads};
     for(size_t i = 0; i < num_tasks; ++i) {
-      sch.emplace(gpu_work(sch, dim_grid, dim_block, BLOCK_SIZE, ms).get_handle());
+      sch.emplace(work(sch, dim_grid, dim_block, BLOCK_SIZE, cpu_ms, gpu_ms).get_handle());
     }
     auto beg_t = std::chrono::steady_clock::now();
     sch.schedule();
@@ -114,7 +133,7 @@ int main(int argc, char** argv) {
     // without coroutine
     cudaWoCoro::Scheduler sch{(size_t)num_threads};
     for(size_t i = 0; i < num_tasks; ++i) {
-      sch.emplace(std::bind(gpu_work_wo_coro,dim_grid, dim_block, BLOCK_SIZE, ms));
+      sch.emplace(std::bind(wo_coro_work, dim_grid, dim_block, BLOCK_SIZE, cpu_ms, gpu_ms));
     }
     auto beg_t = std::chrono::steady_clock::now();
     sch.schedule();
