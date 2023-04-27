@@ -1,19 +1,19 @@
 #include <iostream>
 #include "scheduler.hpp"
 
-Task TaskA(Scheduler& sched) {
+Task TaskA(Scheduler& sch) {
   std::cout << "Hello from TaskA\n";
-  co_await sched.suspend();
+  co_await sch.suspend();
   std::cout << "Executing the TaskA\n";
-  co_await sched.suspend();
+  co_await sch.suspend();
   std::cout << "TaskA is finished\n";
 }
 
-Task TaskB(Scheduler& sched) {
+Task TaskB(Scheduler& sch) {
   std::cout << "Hello from TaskB\n";
-  co_await sched.suspend();
+  co_await sch.suspend();
   std::cout << "Executing the TaskB\n";
-  co_await sched.suspend();
+  co_await sch.suspend();
   std::cout << "TaskB is finished\n";
 }
 

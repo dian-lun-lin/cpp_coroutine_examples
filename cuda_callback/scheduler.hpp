@@ -1,3 +1,5 @@
+#pragma once
+
 #include <coroutine>
 #include <list>
 #include <queue>
@@ -6,6 +8,13 @@
 #include <mutex>
 #include <condition_variable>
 #include <thread>
+
+class Scheduler;
+
+struct cudaCallbackData {
+  Scheduler* sch;
+  size_t task_id;
+};
 
 struct Task {
 
@@ -16,6 +25,8 @@ struct Task {
     Task get_return_object() { return std::coroutine_handle<promise_type>::from_promise(*this); }
     void return_void() {}
     void unhandled_exception() {}
+
+    size_t id;
   };
 
   Task(std::coroutine_handle<promise_type> handle): handle{handle} {}
@@ -28,12 +39,16 @@ struct Task {
 
 class Scheduler {
 
+
+  friend void CUDART_CB _cuda_callback(cudaStream_t st, cudaError_t stat, void* void_args);
+
+
   public: 
 
     Scheduler(size_t num_threads = std::thread::hardware_concurrency());
 
-    void emplace(std::coroutine_handle<> task);
-    auto suspend(); 
+    void emplace(std::coroutine_handle<Task::promise_type> task);
+    auto suspend(cudaStream_t stream); 
     void schedule();
     void wait();
 
@@ -52,6 +67,17 @@ class Scheduler {
     void _enqueue(std::coroutine_handle<> task);
     void _process(std::coroutine_handle<> task);
 };
+
+// cuda callback
+void CUDART_CB _cuda_callback(cudaStream_t st, cudaError_t stat, void* void_args) {
+
+  // unpack
+  auto* cbd = (cudaCallbackData*) void_args;
+  Scheduler* sch = cbd->sch;
+  size_t task_id = cbd->task_id;
+  
+  sch->_enqueue(sch->_tasks[task_id]);
+}
 
 Scheduler::Scheduler(size_t num_threads) {
   _workers.reserve(num_threads);
@@ -79,7 +105,8 @@ Scheduler::Scheduler(size_t num_threads) {
   }
 }
 
-void Scheduler::emplace(std::coroutine_handle<> task) {
+void Scheduler::emplace(std::coroutine_handle<Task::promise_type> task) {
+  task.promise().id = _tasks.size();
   _tasks.emplace_back(task);
 }
 
@@ -89,8 +116,23 @@ void Scheduler::schedule() {
   }
 }
 
-auto Scheduler::suspend() {
-  return std::suspend_always{};
+auto Scheduler::suspend(cudaStream_t stream) {
+  struct awaiter: std::suspend_always {
+    Scheduler& sch;
+    cudaStream_t stream;
+
+    cudaCallbackData cbd;
+
+    explicit awaiter(Scheduler& sch, cudaStream_t stream): sch{sch}, stream{stream} {}
+    void await_suspend(std::coroutine_handle<Task::promise_type> coro_handle) {
+      cbd.sch = &(sch);
+      cbd.task_id = coro_handle.promise().id;
+      cudaStreamAddCallback(stream, _cuda_callback, (void*)&cbd, 0);
+    }
+    
+  };
+
+  return awaiter{*this, stream};
 }
 
 void Scheduler::wait() {

@@ -8,6 +8,7 @@ struct Task {
     std::suspend_always final_suspend() noexcept { return {}; }
 
     Task get_return_object() { return std::coroutine_handle<promise_type>::from_promise(*this); }
+    void return_void() {}
     void unhandled_exception() {}
   };
 
