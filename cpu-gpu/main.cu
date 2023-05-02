@@ -1,7 +1,7 @@
 #include <iostream>
 #include "scheduler.hpp"
 
-using namespace cudaPoll;
+using namespace cudaCoro;
 
 template <typename T>
 __global__

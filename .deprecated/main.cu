@@ -4,8 +4,9 @@
 
 #include <chrono>
 #include <iostream>
-#include "../cpu-gpu/scheduler.hpp"
-#include "../wo-coro/scheduler.hpp"
+#include "../cuda_callback/scheduler.hpp"
+#include "../cuda_poll/scheduler.hpp"
+#include "../cuda_wo_coro/scheduler.hpp"
 #include "matmul.hpp"
 
 // GPU loop kernel
@@ -41,8 +42,8 @@ void cpu_loop(int ms) {
 //
 // ===================================================
 
-cudaCoro::Task work(
-  cudaCoro::Scheduler& sch, dim3 dim_grid, dim3 dim_block, 
+cudaPoll::Task work(
+  cudaPoll::Scheduler& sch, dim3 dim_grid, dim3 dim_block, 
   size_t BLOCK_SIZE,  int cpu_ms, int gpu_ms
 ) {
   cpu_loop(cpu_ms);
@@ -52,6 +53,18 @@ cudaCoro::Task work(
   while(cudaStreamQuery(stream) != cudaSuccess) {
     co_await sch.suspend();
   }
+  cudaStreamDestroy(stream);
+}
+
+cudaCallback::Task work(
+  cudaCallback::Scheduler& sch, dim3 dim_grid, dim3 dim_block, 
+  size_t BLOCK_SIZE,  int cpu_ms, int gpu_ms
+) {
+  cpu_loop(cpu_ms);
+  cudaStream_t stream;
+  cudaStreamCreate(&stream);
+  cuda_loop<<<dim_grid, dim_block, 0, stream>>>(gpu_ms);
+  co_await sch.suspend(stream);
   cudaStreamDestroy(stream);
 }
 
@@ -78,7 +91,6 @@ int main(int argc, char** argv) {
 
   if(argc != 5) {
     std::cerr << "usage: ./a.out num_threads num_tasks cpu_time(ms) gpu_time(ms) \n";
-    std::exit(EXIT_FAILURE);
   }
 
   int num_threads = std::atoi(argv[1]);
@@ -90,7 +102,7 @@ int main(int argc, char** argv) {
   dim3 dim_block(BLOCK_SIZE, BLOCK_SIZE, 1);
 
   {
-    cudaCoro::Scheduler sch{(size_t)num_threads};
+    cudaPoll::Scheduler sch{(size_t)num_threads};
     for(size_t i = 0; i < num_tasks; ++i) {
       sch.emplace(work(sch, dim_grid, dim_block, BLOCK_SIZE, cpu_ms, gpu_ms).get_handle());
     }
@@ -100,7 +112,21 @@ int main(int argc, char** argv) {
     auto end_t = std::chrono::steady_clock::now();
 
     auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(end_t - beg_t).count();
-    std::cout << "Coroutine-based scheduler execution time: " << dur << "ms\n";
+    std::cout << "Polling-based scheduler execution time: " << dur << "ms\n";
+  }
+
+  {
+    cudaCallback::Scheduler sch{(size_t)num_threads};
+    for(size_t i = 0; i < num_tasks; ++i) {
+      sch.emplace(work(sch, dim_grid, dim_block, BLOCK_SIZE, cpu_ms, gpu_ms).get_handle());
+    }
+    auto beg_t = std::chrono::steady_clock::now();
+    sch.schedule();
+    sch.wait();
+    auto end_t = std::chrono::steady_clock::now();
+
+    auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(end_t - beg_t).count();
+    std::cout << "Callback-based scheduler execution time: " << dur << "ms\n";
   }
 
   {

@@ -8,7 +8,7 @@
 #include <condition_variable>
 #include <thread>
 
-namespace cudaPoll { // begin of namespace cudaPoll =========================
+namespace cudaCoro { // begin of namespace cudaCoro =========================
 
 struct Task {
 
@@ -127,4 +127,4 @@ void Scheduler::_process(std::coroutine_handle<> task) {
   }
 }
 
-} // end of namespace cudaPoll =========================
+} // end of namespace cudaCoro =========================
