@@ -1,6 +1,7 @@
 #pragma once
 #include <coroutine>
 #include <queue>
+#include <stack>
 
 struct Task {
 
@@ -23,7 +24,8 @@ struct Task {
 
 class Scheduler {
 
-  std::queue<std::coroutine_handle<>> _tasks;
+  //std::queue<std::coroutine_handle<>> _tasks;
+  std::stack<std::coroutine_handle<>> _tasks;
 
   public: 
 
@@ -33,12 +35,16 @@ class Scheduler {
 
     void schedule() {
       while(!_tasks.empty()) {
-        auto task = _tasks.front();
+        //auto task = _tasks.front();
+        auto task = _tasks.top();
         _tasks.pop();
         task.resume();
 
         if(!task.done()) { 
           _tasks.push(task);
+        }
+        else {
+          task.destroy();
         }
       }
     }

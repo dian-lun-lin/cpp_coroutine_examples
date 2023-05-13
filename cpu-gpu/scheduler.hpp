@@ -117,6 +117,7 @@ void Scheduler::_process(std::coroutine_handle<> task) {
     _enqueue(task);
   }
   else {
+    task.destroy();
     if(_finished.fetch_add(1) + 1 == _tasks.size()) {
       {
         std::unique_lock<std::mutex> lock(_mtx);
